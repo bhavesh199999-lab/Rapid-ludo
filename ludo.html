@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ludo + Animations</title>
+  <style>
+    body { font-family: Arial; text-align: center; background: #f4f4f4; }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(15, 30px);
+      grid-template-rows: repeat(15, 30px);
+      margin: auto;
+    }
+    .cell {
+      width: 30px; height: 30px;
+      border: 1px solid #aaa;
+      display: flex; justify-content: center; align-items: center;
+      position: relative;
+    }
+    .home-red { background: #ffb3b3; }
+    .home-blue { background: #b3c6ff; }
+    .home-green { background: #b3ffb3; }
+    .home-yellow { background: #ffffb3; }
+    .path { background: white; }
+    /* Safe cells (green dot) */
+    .safe::after {
+      content: ""; width: 12px; height: 12px;
+      background: green; border-radius: 50%;
+      position: absolute;
+    }
+    /* Home columns */
+    .goal-red { background: #ff8080; }
+    .goal-blue { background: #8080ff; }
+    .goal-green { background: #80ff80; }
+    .goal-yellow { background: #ffff80; }
+    /* Center */
+    .center { background: gold !important; }
+    /* Tokens */
+    .token {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: transform 0.3s ease-in-out;
+      display: flex; justify-content: center; align-items: center;
+      font-size: 12px; font-weight: bold; color: white;
+    }
+    .red { background: red; }
+    .blue { background: blue; }
+    .green { background: green; }
+    .yellow { background: goldenrod; }
+    /* Dice */
+    #controls { margin: 15px; }
+    #dice {
+      width: 60px; height: 60px;
+      margin: auto; margin-top: 10px;
+      border: 3px solid black;
+      border-radius: 10px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      background: white;
+    }
+    .dot {
+      width: 10px; height: 10px;
+      background: black;
+      border-radius: 50%;
+      justify-self: center; align-self: center;
+    }
+    /* Power-ups (gold ⚡ icon) */
+    .powerup {
+      width: 18px; height: 18px;
+      background: gold; border-radius: 50%;
+      position: absolute; bottom: 2px; right: 2px;
+      display: flex; justify-content: center; align-items: center;
+      font-size: 12px; font-weight: bold;
+      box-shadow: 0 0 6px orange;
+    }
+  </style>
+</head>
+<body>
+  <h1>Ludo + Animations</h1>
+  <div id="controls">
+    <button onclick="rollDice()">Roll Dice</button>
+    <div id="dice"></div>
+    <p id="turnInfo">Turn: Red</p>
+  </div>
+  <div id="board"></div>
+
+  <script>
+    const board = document.getElementById("board");
+    const diceBox = document.getElementById("dice");
+    const turnInfo = document.getElementById("turnInfo");
+
+    let players = ["red", "blue", "green", "yellow"];
+    let currentPlayer = 0;
+    let diceResult = 0;
+    let playerPower = { red:null, blue:null, green:null, yellow:null };
+
+    let positions = {
+      red: [-1, -1, -1, -1],
+      blue: [-1, -1, -1, -1],
+      green: [-1, -1, -1, -1],
+      yellow: [-1, -1, -1, -1]
+    };
+
+    // Create 15x15 board
+    for (let i = 0; i < 225; i++) {
+      let cell = document.createElement("div");
+      cell.classList.add("cell");
+      board.appendChild(cell);
+    }
+    let cells = document.querySelectorAll(".cell");
+
+    // Home zones
+    for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) cells[r*15+c].classList.add("home-red");
+    for (let r = 0; r < 6; r++) for (let c = 9; c < 15; c++) cells[r*15+c].classList.add("home-blue");
+    for (let r = 9; r < 15; r++) for (let c = 0; c < 6; c++) cells[r*15+c].classList.add("home-green");
+    for (let r = 9; r < 15; r++) for (let c = 9; c < 15; c++) cells[r*15+c].classList.add("home-yellow");
+
+    // Center
+    for (let r = 6; r < 9; r++) for (let c = 6; c < 9; c++) cells[r*15+c].classList.add("center");
+
+    // Path (52 cells)
+    let path = [
+      112,113,114,115,116, 101,86,71,56,41, 
+      42,43,44,45,46, 61,76,91,106,121,
+      136,137,138,139,140, 125,110,95,80,65, 
+      64,63,62,61,60, 75,90,105,120,135,
+      150,151,152,153,154, 139,124,109,94,79,
+      78,77,76,75,74
+    ]; 
+    let safeZones = [112, 42, 136, 78];
+
+    // Home columns
+    let homeColumns = {
+      red:    [ 97, 98, 99,100,101 ],
+      blue:   [  57, 72, 87,102,117 ],
+      green:  [ 127,128,129,130,131 ],
+      yellow: [  93, 108,123,138,153 ]
+    };
+
+    let diceFaces = [[5],[1,9],[1,5,9],[1,3,7,9],[1,3,5,7,9],[1,3,4,6,7,9]];
+
+    let powerupCells = [];
+    function placePowerUps() {
+      powerupCells = [];
+      for (let i=0;i<6;i++) {
+        let idx=path[Math.floor(Math.random()*path.length)];
+        powerupCells.push(idx);
+      }
+    }
+    placePowerUps();
+
+    function rollDice() {
+      diceResult = Math.floor(Math.random()*6)+1;
+      if (playerPower[players[currentPlayer]]==="double") {
+        diceResult *= 2;
+        playerPower[players[currentPlayer]]=null;
+      }
+      drawDice(diceResult);
+    }
+
+    function drawDice(num) {
+      diceBox.innerHTML="";
+      for (let i=1;i<=9;i++) {
+        let dot=document.createElement("div");
+        if (diceFaces[(num-1)%6].includes(i)) dot.classList.add("dot");
+        diceBox.appendChild(dot);
+      }
+    }
+
+    function moveToken(player, tokenIndex, steps) {
+      let pos=positions[player][tokenIndex];
+      if (pos===-1) {
+        if (steps===6) positions[player][tokenIndex]=0;
+        else return;
+      } else {
+        let target=pos+steps;
+        if (target<path.length) positions[player][tokenIndex]=target;
+        else {
+          let homeStep=target-path.length;
+          if (homeStep<homeColumns[player].length) positions[player][tokenIndex]=path.length+homeStep;
+          else if (homeStep===homeColumns[player].length) positions[player][tokenIndex]="done";
+        }
+      }
+
+      // Power-up pickup
+      if (typeof positions[player][tokenIndex]==="number" && positions[player][tokenIndex]<path.length) {
+        let cellIdx=path[positions[player][tokenIndex]];
+        if (powerupCells.includes(cellIdx)) {
+          givePowerUp(player);
+          powerupCells=powerupCells.filter(c=>c!==cellIdx);
+        }
+      }
+
+      renderBoard();
+
+      if (positions[player].every(p=>p==="done")) alert(player.toUpperCase()+" WINS 🏆");
+
+      if (diceResult!==6 && playerPower[player]!=="extra") currentPlayer=(currentPlayer+1)%players.length;
+      else playerPower[player]=null;
+
+      if (playerPower[players[currentPlayer]]==="freeze") {
+        alert(players[currentPlayer]+" frozen ❄️");
+        playerPower[players[currentPlayer]]=null;
+        currentPlayer=(currentPlayer+1)%players.length;
+      }
+
+      turnInfo.innerText="Turn: "+players[currentPlayer];
+      diceResult=0;
+    }
+
+    function givePowerUp(player) {
+      let options=["double","extra","freeze","shield"];
+      let power=options[Math.floor(Math.random()*options.length)];
+      playerPower[player]=power;
+      alert(player+" got "+power+"!");
+    }
+
+    function renderBoard() {
+      cells.forEach(c=>{
+        if (!c.classList.contains("home-red") &&
+            !c.classList.contains("home-blue") &&
+            !c.classList.contains("home-green") &&
+            !c.classList.contains("home-yellow") &&
+            !c.classList.contains("center")) c.className="cell";
+        c.innerHTML="";
+      });
+
+      path.forEach(idx=>cells[idx].classList.add("path"));
+      safeZones.forEach(idx=>cells[idx].classList.add("safe"));
+      for (let p in homeColumns) homeColumns[p].forEach(idx=>cells[idx].classList.add("goal-"+p));
+
+      powerupCells.forEach(idx=>{
+        let pu=document.createElement("div");
+        pu.classList.add("powerup");
+        pu.innerText="⚡";
+        cells[idx].appendChild(pu);
+      });
+
+      // Stacking logic
+      let cellMap={};
+      for (let p of players) {
+        positions[p].forEach((pos,i)=>{
+          if (pos==="done") return;
+          let cellIdx;
+          if (pos>=0 && pos<path.length) cellIdx=path[pos];
+          else if (typeof pos==="number" && pos>=path.length) {
+            let step=pos-path.length;
+            cellIdx=homeColumns[p][step];
+          }
+          if (cellIdx!==undefined) {
+            if (!cellMap[cellIdx]) cellMap[cellIdx]=[];
+            cellMap[cellIdx].push(p);
+          }
+        });
+      }
+
+      for (let idx in cellMap) {
+        let playersHere=cellMap[idx];
+        let token=document.createElement("div");
+        token.classList.add("token",playersHere[0]);
+        if (playersHere.length>1) token.innerText="×"+playersHere.length;
+        if (playersHere[0]===players[currentPlayer] && diceResult>0) {
+          token.onclick=()=>moveToken(playersHere[0],0,diceResult);
+        }
+        cells[idx].appendChild(token);
+      }
+    }
+
+    renderBoard();
+  </script>
+</body>
+</html>
